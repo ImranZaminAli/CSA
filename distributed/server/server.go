@@ -121,8 +121,9 @@ func (s *GameOfLifeOperations) ProcessTurns(req stubs.ProcessTurnsRequest, res *
 
 		}
 		res.World = s.world
-	}
 
+	}
+	res.Turns = s.turn
 	return
 }
 
