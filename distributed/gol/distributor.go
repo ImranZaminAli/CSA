@@ -1,7 +1,6 @@
 package gol
 
 import (
-	//"CSA/distributed/stubs"
 	"flag"
 	"fmt"
 	"net/rpc"
@@ -149,22 +148,25 @@ func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannel
 	<-finished
 
 }*/
-func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannels, newTurn *int, output *bool) {
+
+func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannels, newTurn *int, output, finished, shutdown *bool) {
 	processTurnsRequest := stubs.ProcessTurnsRequest{*world, p.Turns, p.Threads, p.ImageHeight, p.ImageWidth}
 	processTurnsResponse := new(stubs.ProcessTurnsResponse)
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	paused := false
 	go func() {
-		for {
+		for !*finished {
 			if !paused {
 				select {
 				case <-ticker.C:
 					aliveCellCountRequest := stubs.AliveCellCountRequest{}
 					aliveCellCountResponse := new(stubs.AliveCellsCountResponse)
 					client.Call(stubs.AliveCellCountHandler, aliveCellCountRequest, aliveCellCountResponse)
-					c.events <- TurnComplete{aliveCellCountResponse.Turns}
-					c.events <- AliveCellsCount{aliveCellCountResponse.Turns, aliveCellCountResponse.CellsAlive}
+					if !*finished {
+						c.events <- TurnComplete{aliveCellCountResponse.Turns}
+						c.events <- AliveCellsCount{aliveCellCountResponse.Turns, aliveCellCountResponse.CellsAlive}
+					}
 
 				case key := <-c.keyPresses:
 					keyPressRequest := stubs.KeyPressRequest{key}
@@ -179,22 +181,31 @@ func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannel
 						c.events <- StateChange{*newTurn, Paused}
 						// do something
 					case 'q':
+						*output = false
 						// do something
 					case 's':
+						createPgm(p, *newTurn, *world, c)
 						// do something
 					case 'k':
+						//client.Call(stubs.ShutDownHandler, stubs.ShutDownRequest{}, new(stubs.ShutDownResponse))
+						*shutdown = true
 						// do something
 					}
 
 				}
 			} else {
 				key := <-c.keyPresses
+				keyPressRequest := stubs.KeyPressRequest{key}
+				keyPressResponse := new(stubs.KeyPressResponse)
+				client.Call(stubs.KeyPressHandler, keyPressRequest, keyPressResponse)
+				*newTurn = keyPressResponse.Turns
+				*world = keyPressResponse.World
 				if key == 'p' {
 					paused = false
 					fmt.Println("Continuing")
 					c.events <- StateChange{*newTurn, Executing}
 				} else if key == 'k' {
-
+					*shutdown = true
 				}
 
 			}
@@ -203,7 +214,7 @@ func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannel
 	}()
 
 	client.Call(stubs.ProcessTurnsHandler, processTurnsRequest, processTurnsResponse)
-
+	*finished = true
 	*newTurn = processTurnsResponse.Turns
 	*world = processTurnsResponse.World
 
@@ -234,8 +245,8 @@ func createPgm(p Params, turn int, world [][]byte, c distributorChannels) {
 
 	}
 
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
+	// c.ioCommand <- ioCheckIdle
+	// <-c.ioIdle
 
 	c.events <- ImageOutputComplete{turn, filename}
 }
@@ -261,19 +272,26 @@ func distributor(p Params, c distributorChannels) {
 	//var newWorld [][]byte
 	newTurn := 0
 	output := true
+	finished := false
+	shutdown := false
+	makeCall(*client, &world, p, c, &newTurn, &output, &finished, &shutdown)
 
-	makeCall(*client, &world, p, c, &newTurn, &output)
+	if shutdown {
+		client.Call(stubs.ShutDownHandler, stubs.ShutDownRequest{}, new(stubs.ShutDownResponse))
+	}
 
-	// if output {
-	// 	createPgm(p, newTurn, world, c)
-	// }
+	//finished = true
+	if output {
+		client.Call(stubs.QuitHandler, stubs.QuitRequest{}, new(stubs.QuitResponse))
+		createPgm(p, newTurn, world, c)
+	}
 
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.events <- FinalTurnComplete{newTurn, calculateAliveCells(world)}
 
 	// Make sure that the Io has finished any output before exiting.
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
 
 	c.events <- StateChange{newTurn, Quitting}
 

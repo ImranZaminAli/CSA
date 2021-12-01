@@ -71,13 +71,45 @@ func calculateNextState(req stubs.ProcessTurnsRequest, world [][]byte) [][]byte 
 }
 
 type GameOfLifeOperations struct {
-	turn   int
-	world  [][]byte
-	paused bool
+	turn     int
+	world    [][]byte
+	paused   bool
+	finished bool
+	end      chan bool
 }
 
-func (s *GameOfLifeOperations) AliveCellCount(req stubs.AliveCellCountRequest, res *stubs.AliveCellsCountResponse) (err error) {
+func (s *GameOfLifeOperations) Pause(req stubs.PauseRequest, res *stubs.PauseResponse) (err error) {
+	s.paused = false
+	return
+}
+
+func (s *GameOfLifeOperations) Quit(req stubs.QuitRequest, res *stubs.QuitResponse) (err error) {
+	s.finished = true
+	return
+}
+
+func (s *GameOfLifeOperations) ShutDown(req stubs.ShutDownRequest, res *stubs.ShutDownResponse) (err error) {
+	s.end <- true
+	return
+}
+
+func (s *GameOfLifeOperations) KeyPress(req stubs.KeyPressRequest, res *stubs.KeyPressResponse) (err error) {
 	res.Turns = s.turn
+	res.World = s.world
+
+	if req.Key == 'p' {
+		s.paused = !s.paused
+	} else if req.Key == 'q' {
+		s.finished = true
+	} else if req.Key == 'k' {
+		s.finished = true
+	}
+
+	return
+}
+
+func (s *GameOfLifeOperations) AliveCellCount(req stubs.AliveCellCountRequest, resp *stubs.AliveCellsCountResponse) (err error) {
+	resp.Turns = s.turn
 
 	cellsAlive := 0
 
@@ -89,18 +121,7 @@ func (s *GameOfLifeOperations) AliveCellCount(req stubs.AliveCellCountRequest, r
 		}
 	}
 
-	res.CellsAlive = cellsAlive
-
-	return
-}
-
-func (s *GameOfLifeOperations) KeyPress(req stubs.KeyPressRequest, res *stubs.KeyPressResponse) (err error) {
-	res.Turns = s.turn
-	res.World = s.world
-
-	if req.Key == 'p' {
-		s.paused = !s.paused
-	}
+	resp.CellsAlive = cellsAlive
 
 	return
 }
@@ -110,20 +131,26 @@ func (s *GameOfLifeOperations) ProcessTurns(req stubs.ProcessTurnsRequest, res *
 		err = errors.New("A world must be given!")
 		return
 	}
+	s.finished = false
 	s.world = req.World
-	res.World = req.World
+	res.Turns = 0
 	s.turn = 0
-	for s.turn < req.Turns {
+	res.World = req.World
+
+	for s.turn < req.Turns && !s.finished {
 		if !s.paused {
 			s.world = calculateNextState(req, s.world)
+			res.World = s.world
 			s.turn++
-		} else {
-
-		}
-		res.World = s.world
+			res.Turns++
+		} // else {
+		// 	res.World = s.world
+		// 	res.Turns = s.turn
+		// }
+		//res.World = s.world
 
 	}
-	res.Turns = s.turn
+	//res.Turns = s.turn
 	return
 }
 
@@ -135,13 +162,14 @@ func main() {
 	turn := 0
 	var world [][]byte
 	paused := false
-	//finished := make(chan bool)
+	finished := false
+	end := make(chan bool)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 
-	rpc.Register(&GameOfLifeOperations{turn, world, paused})
+	rpc.Register(&GameOfLifeOperations{turn, world, paused, finished, end})
 
 	defer listener.Close()
-	rpc.Accept(listener)
-	//<-finished
+	go rpc.Accept(listener)
+	<-end
 	os.Exit(0)
 }
