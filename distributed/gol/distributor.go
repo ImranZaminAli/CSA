@@ -23,132 +23,6 @@ type distributorChannels struct {
 
 var server *string = flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
 
-// func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannels, newTurn *int) {
-// 	paused := 0
-// 	ticker := time.NewTicker(2 * time.Second)
-// loop:
-// 	for *newTurn < p.Turns {
-// 		request := stubs.Request{*world, *newTurn, p.Threads, p.ImageWidth, p.ImageHeight, paused}
-// 		response := new(stubs.Response)
-// 		client.Call(stubs.ProcessTurnsHandler, request, response)
-// 		*world = response.World
-// 		c.events <- TurnComplete{*newTurn}
-// 		(*newTurn)++
-
-// 		select {
-// 		case <-ticker.C:
-
-// 			cellCountRequest := stubs.EventRequest{*newTurn, *world}
-// 			cellCountResponse := new(stubs.EventResponse)
-// 			client.Call(stubs.CellCount, cellCountRequest, cellCountResponse)
-// 			c.events <- AliveCellsCount{*newTurn, cellCountResponse.CellsAlive}
-// 		case key := <-c.keyPresses:
-// 			if key == 's' {
-// 				createPgm(p, *newTurn, *world, c)
-// 			} else if key == 'q' {
-// 				c.events <- StateChange{*newTurn, Quitting}
-// 				break loop
-// 			} else if key == 'p' {
-// 				if paused == 0 {
-// 					paused = 1
-// 					fmt.Println(*newTurn)
-// 					c.events <- StateChange{*newTurn, Paused}
-// 				} else {
-// 					paused = 0
-// 					fmt.Println("Continuing")
-// 					c.events <- StateChange{*newTurn, Executing}
-// 				}
-// 			} else if key == 'k' {
-// 				shutDownReq := stubs.ShutDownRequest{}
-// 				shutDownRes := new(stubs.ShutDownResponse)
-
-// 				client.Call(stubs.ShutDown, shutDownReq, shutDownRes)
-// 				break loop
-// 			}
-// 		default:
-// 		}
-// 	}
-
-// }
-/*
-func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannels, turn *int, output *bool) {
-	ticker := time.NewTicker(2 * time.Second)
-
-	processTurnsRequest := stubs.ProcessTurnsRequest{*world, p.Turns, p.Threads, p.ImageHeight, p.ImageWidth}
-	processTurnsResponse := new(stubs.ProcessTurnsResponse)
-
-	finished := make(chan bool)
-	paused := false
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				aliveCellCountRequest := stubs.AliveCellCountRequest{}
-				aliveCellCountResponse := new(stubs.AliveCellsCountResponse)
-				client.Call(stubs.AliveCellCountHandler, aliveCellCountRequest, aliveCellCountResponse)
-				c.events <- AliveCellsCount{aliveCellCountResponse.Turns, aliveCellCountResponse.CellsAlive}
-				c.events <- TurnComplete{aliveCellCountResponse.Turns}
-				*turn = aliveCellCountResponse.Turns
-
-			case key := <-c.keyPresses:
-				keyPressRequest := stubs.KeyPressRequest{key}
-				keyPressResponse := new(stubs.KeyPressResponse)
-				client.Call(stubs.KeyPressHandler, keyPressRequest, keyPressResponse)
-				*turn = keyPressResponse.Turns
-				*world = keyPressResponse.World
-				fmt.Println("\n\n", keyPressResponse.Turns, len(calculateAliveCells(keyPressResponse.World)), "\n\n")
-
-				switch key {
-				case 'p':
-					paused = !paused
-					if paused {
-						fmt.Println(keyPressResponse.Turns)
-						c.events <- StateChange{keyPressResponse.Turns, Paused}
-					} else {
-						fmt.Println("Continuing")
-						c.events <- StateChange{keyPressResponse.Turns, Executing}
-					}
-				case 'q':
-					c.events <- StateChange{keyPressResponse.Turns, Quitting}
-					*output = false
-					finished <- true
-				case 's':
-					createPgm(p, keyPressResponse.Turns, keyPressResponse.World, c)
-				case 'k':
-
-					createPgm(p, keyPressResponse.Turns, keyPressResponse.World, c)
-					fmt.Println(len(keyPressResponse.World))
-					c.events <- StateChange{keyPressResponse.Turns, Quitting}
-					finished <- true
-				}
-				// case 'k':
-				// 	shut down server - done
-				// 	shut down distributor
-				// 	output pgm of latest state
-				// 	change state event latest turn
-			}
-
-		}
-	}()
-
-	// go func (){
-	// 	client.Call(stubs.ProcessTurnsHandler, processTurnsRequest, processTurnsResponse)
-	// 	finished <- true
-	// }()
-
-	go func() {
-		client.Call(stubs.ProcessTurnsHandler, processTurnsRequest, processTurnsResponse)
-		*output = true
-		finished <- true
-	}()
-
-	*world = processTurnsResponse.World
-	*turn = processTurnsResponse.Turns
-
-	<-finished
-
-}*/
-
 func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannels, newTurn *int, output, finished, shutdown *bool) {
 	processTurnsRequest := stubs.ProcessTurnsRequest{*world, p.Turns, p.Threads, p.ImageHeight, p.ImageWidth}
 	processTurnsResponse := new(stubs.ProcessTurnsResponse)
@@ -179,19 +53,13 @@ func makeCall(client rpc.Client, world *[][]byte, p Params, c distributorChannel
 						paused = true
 						fmt.Println(*newTurn)
 						c.events <- StateChange{*newTurn, Paused}
-						// do something
 					case 'q':
 						*output = false
-						// do something
 					case 's':
 						createPgm(p, *newTurn, *world, c)
-						// do something
 					case 'k':
-						//client.Call(stubs.ShutDownHandler, stubs.ShutDownRequest{}, new(stubs.ShutDownResponse))
 						*shutdown = true
-						// do something
 					}
-
 				}
 			} else {
 				key := <-c.keyPresses
@@ -245,15 +113,14 @@ func createPgm(p Params, turn int, world [][]byte, c distributorChannels) {
 
 	}
 
-	// c.ioCommand <- ioCheckIdle
-	// <-c.ioIdle
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
 
 	c.events <- ImageOutputComplete{turn, filename}
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
-	// TODO: Create a 2D slice to store the world.
 	var world [][]byte
 
 	c.ioCommand <- ioInput
@@ -269,7 +136,6 @@ func distributor(p Params, c distributorChannels) {
 	client, _ := rpc.Dial("tcp", *server)
 	defer client.Close()
 
-	//var newWorld [][]byte
 	newTurn := 0
 	output := true
 	finished := false
@@ -280,7 +146,6 @@ func distributor(p Params, c distributorChannels) {
 		client.Call(stubs.ShutDownHandler, stubs.ShutDownRequest{}, new(stubs.ShutDownResponse))
 	}
 
-	//finished = true
 	if output {
 		client.Call(stubs.QuitHandler, stubs.QuitRequest{}, new(stubs.QuitResponse))
 		createPgm(p, newTurn, world, c)
@@ -288,7 +153,6 @@ func distributor(p Params, c distributorChannels) {
 
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
-	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.events <- FinalTurnComplete{newTurn, calculateAliveCells(world)}
 
 	// Make sure that the Io has finished any output before exiting.

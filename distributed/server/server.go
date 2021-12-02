@@ -38,19 +38,13 @@ func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *st
 	for y := range req.World {
 		for x := range req.World[y] {
 
-			// say y is 0 (goes from 0 to 254 for 255 height matrix)
-			// above 0 would be -1 (if thinking about it in terms of the matrix going ^)
-			// (0 + 255 - 1) % 255 = (254) % 255 = 254 (bottom of matrix)
-			// taking the pixel matrix value MOD height/width whatever is relevant allows for the overlapping
 			up := (y + h - 1) % h
 			down := (y + h + 1) % h
 
-			// (3 + 255 - 1) % 255 = 257 % 255 = 2 (remainder - which corresponds to the correct value as left of 3 is 2)
 			left := (x + w - 1) % w
 			right := (x + w + 1) % w
 			neighbours := [8]byte{req.World[up][left], req.World[up][x], req.World[up][right], req.World[y][left], req.World[y][right], req.World[down][left], req.World[down][x], req.World[down][right]}
 
-			// local count for the neighbours of a particular pixel
 			cellsAlive := 0
 			for n := range neighbours {
 				if neighbours[n] == 255 {
