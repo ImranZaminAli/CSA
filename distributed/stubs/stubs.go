@@ -5,7 +5,7 @@ var AliveCellCountHandler = "GameOfLifeOperations.AliveCellCount"
 var KeyPressHandler = "GameOfLifeOperations.KeyPress"
 var QuitHandler = "GameOfLifeOperations.Quit"
 var ShutDownHandler = "GameOfLifeOperations.ShutDown"
-var PauseHandler = "GameOfLifeOperations.Pause"
+var TurnHandler = "GameOfLifeOperations.ExecuteTurn"
 
 type ProcessTurnsRequest struct {
 	World       [][]byte
@@ -42,6 +42,10 @@ type ShutDownRequest struct{}
 
 type ShutDownResponse struct{}
 
-type PauseRequest struct{}
+type ExecuteTurnRequest struct {
+	World       [][]byte
+	ImageHeight int
+	ImageWidth  int
+}
 
-type PauseResponse struct{}
+type ExecuteTurnResponse struct{ World [][]byte }

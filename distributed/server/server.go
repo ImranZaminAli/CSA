@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"math/rand"
 	"net"
@@ -12,7 +11,15 @@ import (
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
-/** Super-Secret method we can't allow clients to see. **/
+type GameOfLifeOperations struct {
+	end chan bool
+}
+
+func (s *GameOfLifeOperations) ShutDown(req stubs.ShutDownRequest, res *stubs.ShutDownResponse) (err error) {
+	s.end <- true
+	return
+}
+
 func worldCopy(world [][]byte) [][]byte {
 	newWorld := [][]byte{}
 	for i := range world {
@@ -24,14 +31,12 @@ func worldCopy(world [][]byte) [][]byte {
 	return newWorld
 }
 
-/** Super-Secret method we can't allow clients to see. **/
-
-func calculateNextState(req stubs.ProcessTurnsRequest, world [][]byte) [][]byte {
-	newWorld := worldCopy(world)
+func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *stubs.ExecuteTurnResponse) (err error) {
+	newWorld := worldCopy(req.World)
 	w := req.ImageWidth
 	h := req.ImageHeight
-	for y := range world {
-		for x := range world[y] {
+	for y := range req.World {
+		for x := range req.World[y] {
 
 			// say y is 0 (goes from 0 to 254 for 255 height matrix)
 			// above 0 would be -1 (if thinking about it in terms of the matrix going ^)
@@ -43,7 +48,7 @@ func calculateNextState(req stubs.ProcessTurnsRequest, world [][]byte) [][]byte 
 			// (3 + 255 - 1) % 255 = 257 % 255 = 2 (remainder - which corresponds to the correct value as left of 3 is 2)
 			left := (x + w - 1) % w
 			right := (x + w + 1) % w
-			neighbours := [8]byte{world[up][left], world[up][x], world[up][right], world[y][left], world[y][right], world[down][left], world[down][x], world[down][right]}
+			neighbours := [8]byte{req.World[up][left], req.World[up][x], req.World[up][right], req.World[y][left], req.World[y][right], req.World[down][left], req.World[down][x], req.World[down][right]}
 
 			// local count for the neighbours of a particular pixel
 			cellsAlive := 0
@@ -53,7 +58,7 @@ func calculateNextState(req stubs.ProcessTurnsRequest, world [][]byte) [][]byte 
 				}
 			}
 
-			if world[y][x] == 255 { // if alive
+			if req.World[y][x] == 255 { // if alive
 				if cellsAlive < 2 {
 					newWorld[y][x] = 0
 				} else if cellsAlive > 3 {
@@ -67,90 +72,8 @@ func calculateNextState(req stubs.ProcessTurnsRequest, world [][]byte) [][]byte 
 		}
 	}
 
-	return newWorld
-}
+	res.World = newWorld
 
-type GameOfLifeOperations struct {
-	turn     int
-	world    [][]byte
-	paused   bool
-	finished bool
-	end      chan bool
-}
-
-func (s *GameOfLifeOperations) Pause(req stubs.PauseRequest, res *stubs.PauseResponse) (err error) {
-	s.paused = false
-	return
-}
-
-func (s *GameOfLifeOperations) Quit(req stubs.QuitRequest, res *stubs.QuitResponse) (err error) {
-	s.finished = true
-	return
-}
-
-func (s *GameOfLifeOperations) ShutDown(req stubs.ShutDownRequest, res *stubs.ShutDownResponse) (err error) {
-	s.end <- true
-	return
-}
-
-func (s *GameOfLifeOperations) KeyPress(req stubs.KeyPressRequest, res *stubs.KeyPressResponse) (err error) {
-	res.Turns = s.turn
-	res.World = s.world
-
-	if req.Key == 'p' {
-		s.paused = !s.paused
-	} else if req.Key == 'q' {
-		s.finished = true
-	} else if req.Key == 'k' {
-		s.finished = true
-	}
-
-	return
-}
-
-func (s *GameOfLifeOperations) AliveCellCount(req stubs.AliveCellCountRequest, resp *stubs.AliveCellsCountResponse) (err error) {
-	resp.Turns = s.turn
-
-	cellsAlive := 0
-
-	for y := range s.world {
-		for x := range s.world {
-			if s.world[y][x] == 255 {
-				cellsAlive++
-			}
-		}
-	}
-
-	resp.CellsAlive = cellsAlive
-
-	return
-}
-
-func (s *GameOfLifeOperations) ProcessTurns(req stubs.ProcessTurnsRequest, res *stubs.ProcessTurnsResponse) (err error) {
-	if len(req.World) == 0 {
-		err = errors.New("A world must be given!")
-		return
-	}
-	s.finished = false
-	s.world = req.World
-	res.Turns = 0
-	s.turn = 0
-	res.World = req.World
-
-	for s.turn < req.Turns && !s.finished {
-		if !s.paused {
-			s.world = calculateNextState(req, s.world)
-			res.World = s.world
-			s.turn++
-			res.Turns++
-		} // else {
-		// 	res.World = s.world
-		// 	res.Turns = s.turn
-		// }
-		//res.World = s.world
-
-	}
-	//res.Turns = s.turn
 	return
 }
 
@@ -159,14 +82,10 @@ func main() {
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
 
-	turn := 0
-	var world [][]byte
-	paused := false
-	finished := false
 	end := make(chan bool)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 
-	rpc.Register(&GameOfLifeOperations{turn, world, paused, finished, end})
+	rpc.Register(&GameOfLifeOperations{end})
 
 	defer listener.Close()
 	go rpc.Accept(listener)
