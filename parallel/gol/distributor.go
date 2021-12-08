@@ -37,9 +37,23 @@ func flipCell(turn, y, x int, events chan<- Event) {
 	events <- CellFlipped{turn, cell}
 }
 
+// produces an array of the coordinates of the alive cells for the current state
+func getAliveCells(p Params, world [][]byte) []util.Cell {
+	alive := []util.Cell{}
+	for y := range world {
+		for x := range world[y] {
+			if world[y][x] == 255 {
+				alive = append(alive, util.Cell{Y: y, X: x})
+			}
+		}
+	}
+
+	return alive
+}
+
 // calculates the next state for each of the cells in the specified dimensions
-func calculateNextState(turn, start, end int, p Params, world [][]byte, events chan<- Event) [][]byte {
-	newWorld := makeCopy(start, end, world)
+func calculateNextState(turn, start, end int, p Params, world *[][]byte, events chan<- Event) [][]byte {
+	newWorld := makeCopy(start, end, (*world))
 	w := p.ImageWidth
 	h := p.ImageHeight
 
@@ -50,7 +64,7 @@ func calculateNextState(turn, start, end int, p Params, world [][]byte, events c
 			left := (x + w - 1) % w
 			right := (x + w + 1) % w
 
-			neighbours := [8]byte{world[up][left], world[up][x], world[up][right], world[y][left], world[y][right], world[down][left], world[down][x], world[down][right]}
+			neighbours := [8]byte{(*world)[up][left], (*world)[up][x], (*world)[up][right], (*world)[y][left], (*world)[y][right], (*world)[down][left], (*world)[down][x], (*world)[down][right]}
 			cellsAlive := 0
 			for n := range neighbours {
 				if neighbours[n] == 255 {
@@ -58,7 +72,7 @@ func calculateNextState(turn, start, end int, p Params, world [][]byte, events c
 				}
 			}
 
-			if world[y][x] == 255 {
+			if (*world)[y][x] == 255 {
 				if cellsAlive < 2 || cellsAlive > 3 {
 					newWorld[y-start][x] = 0
 					flipCell(turn, y, x, events)
@@ -76,29 +90,15 @@ func calculateNextState(turn, start, end int, p Params, world [][]byte, events c
 	return newWorld
 }
 
-// produces an array of the coordinates of the alive cells for the current state
-func getAliveCells(p Params, world [][]byte) []util.Cell {
-	alive := []util.Cell{}
-	for y := range world {
-		for x := range world[y] {
-			if world[y][x] == 255 {
-				alive = append(alive, util.Cell{Y: y, X: x})
-			}
-		}
-	}
-
-	return alive
-}
-
 // runs one worker thread that calculates part of the next state for the game of life
 // size of area covered is based on number of workers and image dimensions
-func worker(turn, start, end int, p Params, world [][]byte, out chan [][]byte, events chan<- Event) {
+func worker(turn, start, end int, p Params, world *[][]byte, out chan [][]byte, events chan<- Event) {
 	newStates := calculateNextState(turn, start, end, p, world, events)
 	out <- newStates
 }
 
 // executes one turn of the game of life
-func execute(turn int, p Params, world [][]byte, out chan [][]byte, events chan<- Event) {
+func execute(turn int, p Params, world *[][]byte, out chan [][]byte, events chan<- Event) {
 
 	var newStates [][]byte
 	var channels []chan [][]byte
@@ -122,6 +122,105 @@ func execute(turn int, p Params, world [][]byte, out chan [][]byte, events chan<
 	out <- newStates
 
 }
+
+/*func makeCopy(subWorld [][]byte) [][]byte {
+	var newWorld [][]byte
+
+	for i := 0; i < len(subWorld); i++ {
+		newWorld = append(newWorld, []byte{})
+		for j := 0; j < len(subWorld[i]); j++ {
+			newWorld[i] = append(newWorld[i], subWorld[i][j])
+		}
+	}
+
+	return newWorld
+}
+
+func calculateNextState(turn int, p Params, subWorld [][]byte, events chan<- Event) [][]byte {
+	newWorld := makeCopy(subWorld)
+	w := p.ImageWidth
+	for y := 1; y < len(subWorld)-1; y++ {
+		for x := range subWorld[y] {
+			up := y - 1
+			down := y + 1
+			left := (x + w - 1) % w
+			right := (x + w + 1) % w
+
+			neighbours := []byte{subWorld[up][left], subWorld[up][x], subWorld[up][right], subWorld[y][left], subWorld[y][right], subWorld[down][left], subWorld[down][x], subWorld[down][right]}
+			cellsAlive := 0
+
+			for i := range neighbours {
+				if neighbours[i] == 255 {
+					cellsAlive++
+				}
+			}
+
+			if subWorld[y][x] == 255 {
+				if cellsAlive < 2 || cellsAlive > 3 {
+					newWorld[y][x] = 0
+					flipCell(turn, y, x, events)
+				}
+			} else {
+				if cellsAlive == 3 {
+					subWorld[y][x] = 255
+					flipCell(turn, y, x, events)
+				}
+
+			}
+
+		}
+	}
+
+	return newWorld[1 : len(newWorld)-1]
+}
+
+func worker(turn int, p Params, subWorld [][]byte, channel chan [][]byte, events chan<- Event) {
+	channel <- calculateNextState(turn, p, subWorld, events)
+}
+
+func execute(turn int, p Params, world *[][]byte, out chan [][]byte, events chan<- Event) {
+	var newState [][]byte
+	var channels []chan [][]byte
+	//var subWorld [][]byte
+	var start int
+	var end int
+	hInc := p.ImageHeight / p.Threads
+	for i := 0; i < p.Threads; i++ {
+		channels = append(channels, make(chan [][]byte))
+	}
+
+	for i := 0; i < p.Threads; i++ {
+		start = (hInc * i)
+		end = hInc * (i + 1)
+		if i == p.Threads-1 {
+			end = 0
+		}
+
+		var subWorld [][]byte
+		upper := (start - 1 + p.ImageHeight) % p.ImageHeight
+		subWorld = append(subWorld, (*world)[upper])
+
+		//subWorld = append(subWorld, (*world)[start])
+		for j := 0; j < hInc; j++ {
+
+			//go worker()
+			subWorld = append(subWorld, (*world)[j+start])
+		}
+
+		subWorld = append(subWorld, (*world)[end])
+		fmt.Println("\n\n", subWorld, "\n\n", hInc, p.ImageHeight, p.Threads, "\n\n")
+		go worker(turn, p, subWorld, channels[i], events)
+
+	}
+
+	for i := 0; i < p.Threads; i++ {
+		newState = append(newState, <-channels[i]...)
+	}
+
+	fmt.Println("\n", len(newState), len(newState[0]), "\n")
+
+	out <- newState
+}*/
 
 // creates the world by taking in a file
 func makeWorld(p Params, c distributorChannels) [][]byte {
@@ -166,7 +265,7 @@ loop:
 	for turn < p.Turns {
 		if !paused {
 			out := make(chan [][]byte)
-			go execute(turn, p, world, out, c.events)
+			go execute(turn, p, &world, out, c.events)
 			select {
 			case <-ticker.C:
 				cellsAlive := len(getAliveCells(p, world))
