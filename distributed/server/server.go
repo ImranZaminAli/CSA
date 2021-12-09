@@ -22,29 +22,37 @@ func (s *GameOfLifeOperations) ShutDown(req stubs.ShutDownRequest, res *stubs.Sh
 
 func worldCopy(world [][]byte) [][]byte {
 	newWorld := [][]byte{}
-	for i := range world {
+	// for i := range world {
+	// 	newWorld = append(newWorld, []byte{})
+	// 	for j := range world[i] {
+	// 		newWorld[i] = append(newWorld[i], world[i][j])
+	// 	}
+	// }
+
+	for i := 1; i < len(world)-1; i++ {
+
 		newWorld = append(newWorld, []byte{})
 		for j := range world[i] {
-			newWorld[i] = append(newWorld[i], world[i][j])
+			newWorld[i-1] = append(newWorld[i-1], world[i][j])
 		}
 	}
+
 	return newWorld
 }
 
 func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *stubs.ExecuteTurnResponse) (err error) {
 	newWorld := worldCopy(req.World)
 	w := req.ImageWidth
-	h := req.ImageHeight
-	for y := range req.World {
-		for x := range req.World[y] {
+	h := len(req.World)
 
-			up := (y + h - 1) % h
-			down := (y + h + 1) % h
-
+	for y := 1; y < h-1; y++ {
+		for x := 0; x < w; x++ {
+			up := y - 1
+			down := y + 1
 			left := (x + w - 1) % w
 			right := (x + w + 1) % w
-			neighbours := [8]byte{req.World[up][left], req.World[up][x], req.World[up][right], req.World[y][left], req.World[y][right], req.World[down][left], req.World[down][x], req.World[down][right]}
 
+			neighbours := [8]byte{req.World[up][left], req.World[up][x], req.World[up][right], req.World[y][left], req.World[y][right], req.World[down][left], req.World[down][x], req.World[down][right]}
 			cellsAlive := 0
 			for n := range neighbours {
 				if neighbours[n] == 255 {
@@ -52,16 +60,17 @@ func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *st
 				}
 			}
 
-			if req.World[y][x] == 255 { // if alive
+			if req.World[y][x] == 255 {
 				if cellsAlive < 2 {
-					newWorld[y][x] = 0
+					newWorld[y-1][x] = 0
 				} else if cellsAlive > 3 {
-					newWorld[y][x] = 0
+					newWorld[y-1][x] = 0
 				}
-			} else { // if dead
+			} else {
 				if cellsAlive == 3 {
-					newWorld[y][x] = 255
+					newWorld[y-1][x] = 255
 				}
+
 			}
 		}
 	}
@@ -70,6 +79,46 @@ func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *st
 
 	return
 }
+
+// func (s *GameOfLifeOperations) ExecuteTurn(req stubs.ExecuteTurnRequest, res *stubs.ExecuteTurnResponse) (err error) {
+// 	newWorld := worldCopy(req.World)
+// 	w := req.ImageWidth
+// 	h := req.ImageHeight
+// 	for y := range req.World {
+// 		for x := range req.World[y] {
+
+// 			up := (y + h - 1) % h
+// 			down := (y + h + 1) % h
+
+// 			left := (x + w - 1) % w
+// 			right := (x + w + 1) % w
+// 			neighbours := [8]byte{req.World[up][left], req.World[up][x], req.World[up][right], req.World[y][left], req.World[y][right], req.World[down][left], req.World[down][x], req.World[down][right]}
+
+// 			cellsAlive := 0
+// 			for n := range neighbours {
+// 				if neighbours[n] == 255 {
+// 					cellsAlive++
+// 				}
+// 			}
+
+// 			if req.World[y][x] == 255 { // if alive
+// 				if cellsAlive < 2 {
+// 					newWorld[y][x] = 0
+// 				} else if cellsAlive > 3 {
+// 					newWorld[y][x] = 0
+// 				}
+// 			} else { // if dead
+// 				if cellsAlive == 3 {
+// 					newWorld[y][x] = 255
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	res.World = newWorld
+
+// 	return
+// }
 
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
