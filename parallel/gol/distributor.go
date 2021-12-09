@@ -251,6 +251,11 @@ func createPgm(p Params, turn int, world [][]byte, c distributorChannels) {
 		}
 
 	}
+
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
+
+
 	c.events <- ImageOutputComplete{turn, filename}
 }
 
